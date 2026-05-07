@@ -36,9 +36,8 @@ Use `/api/v1/demo/seed` before frontend walkthroughs to create one employer, one
 
 Deploy `backend/` as its own Vercel project root.
 
-- Entry point: `api/index.py`
-- Config: `vercel.json`
-- Required runtime: Python 3.12
+- Entry point: `index.py`
+- No custom `vercel.json` is required for FastAPI
 
 The frontend should point to this deployed backend through `VITE_API_BASE_URL`.
 
