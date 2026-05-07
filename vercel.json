@@ -1,0 +1,10 @@
+{
+  "framework": "fastapi",
+  "buildCommand": "echo 'No build needed for Python'",
+  "outputDirectory": ".",
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.12"
+    }
+  }
+}
