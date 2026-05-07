@@ -124,7 +124,7 @@ async def mvp_status(session: Session = Depends(get_session)) -> dict:
         "prototype_feedback": _count_rows(session, PrototypeFeedback),
         "trial_task_reviews": _count_rows(session, TrialTaskReview),
     }
-    ai_status = "configured" if settings.groq_api_key else "fallback_only"
+    ai_status = "configured" if settings.resolved_groq_api_key else "fallback_only"
     return {
         "product_statement": (
             "Sabixa turns customer support hiring needs into skill maps, real work samples, "
@@ -438,16 +438,18 @@ async def create_submission(payload: SubmissionCreate, session: Session = Depend
 
     if ai_evaluation:
         evaluation_output = ai_evaluation
+        evaluation_provider = "groq"
     else:
         evaluation_output = evaluate_work_sample(
             answer=payload.answer,
             task_competencies=task.competencies,
             priority_skills=priority_skills,
         )
+        evaluation_provider = "fallback"
 
     evaluation = AIEvaluation(
         submission_id=submission.id,
-        raw_output=evaluation_output.model_dump(),
+        raw_output={**evaluation_output.model_dump(), "provider": evaluation_provider},
         parsed_json=evaluation_output.model_dump(),
         confidence=evaluation_output.confidence_band,
         safety_flags=[] if not evaluation_output.human_review_required else ["human_review_required"],
@@ -455,6 +457,11 @@ async def create_submission(payload: SubmissionCreate, session: Session = Depend
     session.add(evaluation)
 
     passport_summary = await summarize_passport(evaluation_output, payload.answer) if ai_evaluation else build_passport_summary(evaluation_output, payload.answer)
+    passport_summary = {
+        **build_passport_summary(evaluation_output, payload.answer),
+        **passport_summary,
+        "evaluation_provider": evaluation_provider,
+    }
 
     passport = SkillPassport(
         candidate_id=payload.candidate_id,

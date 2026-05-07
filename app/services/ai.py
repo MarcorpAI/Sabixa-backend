@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.schemas import EvaluationOutput, IntakeAnswers, RoleTrackRead, SkillMapItem
 
 settings = get_settings()
-client = AsyncGroq(api_key=settings.groq_api_key) if settings.groq_api_key else None
+client = AsyncGroq(api_key=settings.resolved_groq_api_key) if settings.resolved_groq_api_key else None
 
 ETHICS_NOTE = "AI scores submitted work evidence only. Human review remains required before hiring action."
 

@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="SABIXA_")
 
     @property
+    def resolved_groq_api_key(self) -> str:
+        return self.groq_api_key or os.getenv("GROQ_API_KEY", "")
+
+    @property
     def resolved_database_url(self) -> str:
         configured_url = (
             self.database_url
