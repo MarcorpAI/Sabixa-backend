@@ -44,6 +44,8 @@ The frontend should point to this deployed backend through `VITE_API_BASE_URL`.
 
 Do not rely on SQLite for the deployed backend. Vercel serverless storage is temporary, so candidates, hiring needs, submissions, passports, and employer shortlists can disappear between requests. Use a Postgres database for the deployed backend.
 
+For Prisma Postgres, use the direct Postgres connection URL in Vercel env vars. SQLAlchemy needs a standard Postgres connection string, for example `postgresql://...` or `postgres://...`. If Prisma gives you a `prisma+postgres://...` URL, the backend normalizes it to the SQLAlchemy driver format.
+
 ## MVP Coverage
 
 - Employer hiring need intake.

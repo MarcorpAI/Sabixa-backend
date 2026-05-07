@@ -34,6 +34,8 @@ def get_settings() -> Settings:
 
 
 def _normalize_database_url(database_url: str) -> str:
+    if database_url.startswith("prisma+postgres://"):
+        return database_url.replace("prisma+postgres://", "postgresql+psycopg://", 1)
     if database_url.startswith("postgres://"):
         return database_url.replace("postgres://", "postgresql+psycopg://", 1)
     if database_url.startswith("postgresql://"):
