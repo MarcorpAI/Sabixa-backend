@@ -1,10 +1,8 @@
 {
-  "framework": "fastapi",
-  "buildCommand": "echo 'No build needed for Python'",
-  "outputDirectory": ".",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/index.py": {
-      "runtime": "python3.12"
+    "api/**/*.py": {
+      "excludeFiles": "{tests/**,.venv/**,.pytest_cache/**,**/*.db,sabixa_backend.egg-info/**}"
     }
   }
 }
