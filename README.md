@@ -38,8 +38,11 @@ Deploy `backend/` as its own Vercel project root.
 
 - Entry point: `index.py`
 - No custom `vercel.json` is required for FastAPI
+- Required env var for persistent deployed data: `DATABASE_URL`, `POSTGRES_URL`, or `SABIXA_DATABASE_URL`
 
 The frontend should point to this deployed backend through `VITE_API_BASE_URL`.
+
+Do not rely on SQLite for the deployed backend. Vercel serverless storage is temporary, so candidates, hiring needs, submissions, passports, and employer shortlists can disappear between requests. Use a Postgres database for the deployed backend.
 
 ## MVP Coverage
 

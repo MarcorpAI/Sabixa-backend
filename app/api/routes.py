@@ -521,6 +521,19 @@ async def get_shortlist(hiring_need_id: int, session: Session = Depends(get_sess
     return _build_shortlist(session, hiring_need_id)
 
 
+@router.get("/shortlist", response_model=list[ShortlistCandidate])
+async def get_global_shortlist(session: Session = Depends(get_session)) -> list[ShortlistCandidate]:
+    result = session.execute(
+        select(Submission).options(
+            selectinload(Submission.evaluation),
+            selectinload(Submission.passport),
+            selectinload(Submission.candidate).selectinload(CandidateProfile.user),
+            selectinload(Submission.task),
+        )
+    )
+    return _build_shortlist_from_submissions(list(result.scalars().all()))
+
+
 @router.post("/employer-actions", response_model=EmployerActionRead, status_code=status.HTTP_201_CREATED)
 async def create_employer_action(
     payload: EmployerActionCreate, session: Session = Depends(get_session)
@@ -560,7 +573,11 @@ def _build_shortlist(session: Session, hiring_need_id: int) -> list[ShortlistCan
             selectinload(Submission.task),
         )
     )
-    submissions = [submission for submission in result.scalars().all() if submission.evaluation and submission.passport]
+    return _build_shortlist_from_submissions(list(result.scalars().all()))
+
+
+def _build_shortlist_from_submissions(submissions: list[Submission]) -> list[ShortlistCandidate]:
+    submissions = [submission for submission in submissions if submission.evaluation and submission.passport]
     grouped: dict[int, list[Submission]] = {}
     for submission in submissions:
         grouped.setdefault(submission.candidate_id, []).append(submission)

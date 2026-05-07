@@ -15,8 +15,14 @@ class Settings(BaseSettings):
 
     @property
     def resolved_database_url(self) -> str:
-        if self.database_url:
-            return self.database_url
+        configured_url = (
+            self.database_url
+            or os.getenv("SABIXA_DATABASE_URL")
+            or os.getenv("POSTGRES_URL")
+            or os.getenv("DATABASE_URL")
+        )
+        if configured_url:
+            return _normalize_database_url(configured_url)
         if os.getenv("VERCEL") == "1":
             return "sqlite:////tmp/sabixa.db"
         return "sqlite:///./sabixa.db"
@@ -25,3 +31,11 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def _normalize_database_url(database_url: str) -> str:
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+psycopg://", 1)
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return database_url
