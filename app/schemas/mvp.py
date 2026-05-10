@@ -63,6 +63,30 @@ class CandidateAuthRead(BaseModel):
     role_track: RoleTrackRead
 
 
+class AuthSignupCreate(BaseModel):
+    role: Literal["candidate", "employer"]
+    full_name: str = Field(min_length=2, max_length=160)
+    email: str = Field(min_length=5, max_length=255)
+    password: str = Field(min_length=6, max_length=128)
+    company_name: str | None = Field(default=None, max_length=180)
+    location: str = Field(default="Lagos, Nigeria", min_length=2, max_length=160)
+    experience: str = Field(default="Entry-level customer support candidate.", min_length=2)
+    role_track_id: str = "customer-support-associate"
+
+
+class AuthLoginCreate(BaseModel):
+    email: str = Field(min_length=5, max_length=255)
+    password: str = Field(min_length=6, max_length=128)
+
+
+class AuthSessionRead(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserRead
+    candidate: CandidateProfileRead | None = None
+    employer: EmployerProfileRead | None = None
+
+
 class EmployerProfileCreate(BaseModel):
     user: UserCreate
     company_name: str = Field(min_length=2, max_length=180)
@@ -108,6 +132,7 @@ class TaskRubricCriterion(BaseModel):
     description: str
     points: int = Field(ge=1, le=100)
     critical: bool = False
+    levels: list[dict] = Field(default_factory=list)
 
 
 class TaskRead(BaseModel):
@@ -171,13 +196,17 @@ class EvaluationOutput(BaseModel):
         "Not enough evidence",
         "Human review required",
     ]
+    skill_scores: dict[str, int] = Field(default_factory=dict)
     rubric_breakdown: list[dict]
+    quoted_evidence: list[dict] = Field(default_factory=list)
     evidence_quotes: list[str]
     strengths: list[str]
-    gaps: list[str]
-    improvement_plan: list[str]
+    gaps: list[dict | str]
+    improvement_plan: list[dict | str]
+    qa_checks: list[dict] = Field(default_factory=list)
     human_review_required: bool
     ethics_note: str
+    ethics_detail: dict = Field(default_factory=dict)
 
 
 class AIEvaluationRead(BaseModel):

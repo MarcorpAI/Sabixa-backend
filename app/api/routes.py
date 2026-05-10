@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -27,6 +28,9 @@ from app.schemas import (
     CandidateAuthRead,
     CandidateProfileCreate,
     CandidateProfileRead,
+    AuthLoginCreate,
+    AuthSessionRead,
+    AuthSignupCreate,
     DemoSeedRead,
     EmployerActionCreate,
     EmployerActionRead,
@@ -59,6 +63,7 @@ from app.services import (
     role_tracks,
     task_count_readiness,
 )
+from app.services.auth import create_access_token, get_current_user, hash_password, verify_password
 from app.services.ai import (
     evaluate_with_ai,
     generate_skill_map,
@@ -78,6 +83,120 @@ async def health() -> dict:
 @router.get("/role-tracks")
 async def list_role_tracks() -> list:
     return role_tracks()
+
+
+@router.post("/auth/signup", response_model=AuthSessionRead, status_code=status.HTTP_201_CREATED)
+async def signup(payload: AuthSignupCreate, session: Session = Depends(get_session)) -> dict:
+    email = payload.email.strip().lower()
+    existing_user = session.scalar(select(User).where(User.email == email))
+    if existing_user is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account already exists for this email")
+
+    user = User(
+        full_name=payload.full_name.strip(),
+        email=email,
+        password_hash=hash_password(payload.password),
+        role=UserRole(payload.role),
+    )
+    session.add(user)
+    session.flush()
+
+    candidate = None
+    employer = None
+    if payload.role == "candidate":
+        track = _role_track_or_404(payload.role_track_id)
+        candidate = CandidateProfile(
+            user=user,
+            location=payload.location,
+            experience=payload.experience,
+            role_interest=track.title,
+        )
+        session.add(candidate)
+    else:
+        if not payload.company_name or len(payload.company_name.strip()) < 2:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Company name is required")
+        employer = EmployerProfile(
+            user=user,
+            company_name=payload.company_name.strip(),
+            company_type="SME or startup",
+            sector="Customer support",
+            support_channel=["WhatsApp", "Email"],
+            customer_volume="Hiring pipeline",
+        )
+        session.add(employer)
+
+    session.commit()
+    session.refresh(user)
+    return _auth_session(user)
+
+
+@router.post("/auth/login", response_model=AuthSessionRead)
+async def login(payload: AuthLoginCreate, session: Session = Depends(get_session)) -> dict:
+    email = payload.email.strip().lower()
+    user = session.scalar(
+        select(User)
+        .where(User.email == email)
+        .options(selectinload(User.candidate_profile), selectinload(User.employer_profile))
+    )
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    return _auth_session(user)
+
+
+@router.get("/auth/me", response_model=AuthSessionRead)
+async def me(current_user: User = Depends(get_current_user)) -> dict:
+    return _auth_session(current_user)
+
+
+@router.get("/me/candidate-dashboard")
+async def candidate_dashboard(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)) -> dict:
+    if current_user.role != UserRole.candidate or current_user.candidate_profile is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Candidate account required")
+    candidate = current_user.candidate_profile
+    submissions = session.execute(
+        select(Submission)
+        .where(Submission.candidate_id == candidate.id)
+        .options(selectinload(Submission.evaluation), selectinload(Submission.passport), selectinload(Submission.task))
+        .order_by(Submission.created_at.desc())
+    )
+    rows = [submission for submission in submissions.scalars().all() if submission.evaluation and submission.passport]
+    return jsonable_encoder({
+        "candidate": candidate,
+        "submissions": rows,
+        "latest_passport": rows[0].passport if rows else None,
+        "readiness": task_count_readiness(
+            [row.evaluation.parsed_json["overall_score"] for row in rows],
+            has_critical_low=any(
+                any(item.get("critical") and item.get("score", 100) < 60 for item in row.evaluation.parsed_json.get("rubric_breakdown", []))
+                for row in rows
+            ),
+            has_low_confidence=any(row.evaluation.parsed_json.get("human_review_required", False) for row in rows),
+        ),
+    })
+
+
+@router.get("/me/employer-dashboard")
+async def employer_dashboard(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)) -> dict:
+    if current_user.role != UserRole.employer or current_user.employer_profile is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employer account required")
+    employer = current_user.employer_profile
+    needs = list(
+        session.execute(
+            select(HiringNeed)
+            .where(HiringNeed.employer_id == employer.id)
+            .options(selectinload(HiringNeed.tasks))
+            .order_by(HiringNeed.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    active_need = needs[0] if needs else None
+    return jsonable_encoder({
+        "employer": employer,
+        "hiring_needs": needs,
+        "active_hiring_need": active_need,
+        "shortlist": _build_shortlist(session, active_need.id) if active_need else [],
+    })
 
 
 @router.post("/auth/candidate", response_model=CandidateAuthRead, status_code=status.HTTP_201_CREATED)
@@ -140,6 +259,7 @@ async def mvp_status(session: Session = Depends(get_session)) -> dict:
             "improvement_route": True,
             "trial_task_reconciliation": True,
             "simple_prototype_auth": True,
+            "pitch_deck_content": False,
             "role_track_onboarding": True,
             "prototype_feedback": True,
             "ai_provider": ai_status,
@@ -444,6 +564,7 @@ async def create_submission(payload: SubmissionCreate, session: Session = Depend
             answer=payload.answer,
             task_competencies=task.competencies,
             priority_skills=priority_skills,
+            rubric=task.rubric,
         )
         evaluation_provider = "fallback"
 
@@ -468,7 +589,7 @@ async def create_submission(payload: SubmissionCreate, session: Session = Depend
         submission_id=submission.id,
         public_summary=passport_summary,
         strengths=evaluation_output.strengths,
-        gaps=evaluation_output.gaps,
+        gaps=[gap.get("description", "") if isinstance(gap, dict) else gap for gap in evaluation_output.gaps],
         evidence_preview=payload.answer[:280],
     )
     session.add(passport)
@@ -581,6 +702,16 @@ def _build_shortlist(session: Session, hiring_need_id: int) -> list[ShortlistCan
         )
     )
     return _build_shortlist_from_submissions(list(result.scalars().all()))
+
+
+def _auth_session(user: User) -> dict:
+    return {
+        "access_token": create_access_token(user),
+        "token_type": "bearer",
+        "user": user,
+        "candidate": user.candidate_profile,
+        "employer": user.employer_profile,
+    }
 
 
 def _build_shortlist_from_submissions(submissions: list[Submission]) -> list[ShortlistCandidate]:
@@ -724,7 +855,7 @@ def _create_submission_bundle(
         submission=submission,
         public_summary=build_passport_summary(evaluation_output, answer),
         strengths=evaluation_output.strengths,
-        gaps=evaluation_output.gaps,
+        gaps=[gap.get("description", "") if isinstance(gap, dict) else gap for gap in evaluation_output.gaps],
         evidence_preview=answer[:280],
     )
     session.add_all([evaluation, passport])

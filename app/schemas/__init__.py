@@ -1,5 +1,8 @@
 from app.schemas.mvp import (
     AIEvaluationRead,
+    AuthLoginCreate,
+    AuthSessionRead,
+    AuthSignupCreate,
     CandidateProfileCreate,
     CandidateProfileRead,
     CandidateAuthCreate,
@@ -33,6 +36,9 @@ from app.schemas.mvp import (
 
 __all__ = [
     "AIEvaluationRead",
+    "AuthLoginCreate",
+    "AuthSessionRead",
+    "AuthSignupCreate",
     "CandidateProfileCreate",
     "CandidateProfileRead",
     "CandidateAuthCreate",
